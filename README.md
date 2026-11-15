@@ -34,6 +34,14 @@ There's no real venue, so `tools/venue.html` pretends to be one:
 2. Pick a concert code (`NEON42`) and a music file, then click **Start streaming**.
 3. In the app, join `NEON42`. You should hear the music.
 
+## Testing voice chat without a second phone
+`tools/group.html` lets a computer join a friend group:
+1. In the app, Friends tab → **Create group** and note the code.
+2. Open `tools/group.html` in Chrome, enter a name and that code, click **Join group**,
+   and allow the microphone.
+3. Talk from either side. With a concert playing in the app, talking from the laptop
+   should lower the concert volume on the phone.
+
 ## Code layout
 - `index.ts` – entry; registers LiveKit before the app loads
 - `src/app/` – screens (Expo Router; each file is a tab)
@@ -42,3 +50,4 @@ There's no real venue, so `tools/venue.html` pretends to be one:
 - `src/data/concerts.ts` – concert list (still hard-coded)
 - `src/components/ui.tsx` – colors and shared UI pieces
 - `tools/venue.html` – laptop page that streams music into a concert room
+- `tools/group.html` – laptop page that joins a friend group for voice chat

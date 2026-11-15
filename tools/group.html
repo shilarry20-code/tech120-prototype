@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RaveCall – Join a friend group</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0B0618; color: #F4EEFF; max-width: 560px; margin: 40px auto; padding: 0 20px; }
+  h1 { margin-bottom: 4px; }
+  p.hint { color: #A497C2; margin-top: 0; }
+  label { display: block; margin: 18px 0 6px; font-weight: 600; }
+  input, button { font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid #2C1E4D; background: #1A1030; color: #F4EEFF; width: 100%; box-sizing: border-box; }
+  #code { text-transform: uppercase; letter-spacing: 3px; }
+  button { background: #B14CFF; border: none; font-weight: 700; cursor: pointer; margin-top: 14px; }
+  button.secondary { background: #2C1E4D; }
+  button.stop { background: #3A1426; color: #FF3B5C; }
+  button:disabled { opacity: .4; cursor: default; }
+  #status { margin-top: 18px; padding: 12px; border-radius: 10px; background: #1A1030; }
+  .member { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-top: 8px; border-radius: 12px; background: #1A1030; border: 2px solid #2C1E4D; }
+  .member.talking { border-color: #3DDC97; }
+  .dot { width: 34px; height: 34px; border-radius: 17px; background: #B14CFF; display: flex; align-items: center; justify-content: center; font-weight: 900; color: #0B0618; }
+  .sub { color: #A497C2; font-size: 13px; }
+  .talking .sub { color: #3DDC97; }
+  #inCall { display: none; }
+</style>
+</head>
+<body>
+  <h1>Join a RaveCall group</h1>
+  <p class="hint">Talk with friends who are using the RaveCall app, from this computer's browser.</p>
+
+  <div id="joinForm">
+    <label for="name">Your name</label>
+    <input id="name" maxlength="20" placeholder="What friends will see" />
+    <label for="code">Group code (from the app's Friends tab)</label>
+    <input id="code" maxlength="8" placeholder="e.g. ABCD12" />
+    <button id="join">Join group</button>
+  </div>
+
+  <div id="inCall">
+    <button id="mic" class="secondary">🎙️ Mic is on — click to mute</button>
+    <button id="leave" class="stop">Leave group</button>
+    <h3 style="margin-top:24px">In this group</h3>
+    <div id="members"></div>
+  </div>
+
+  <div id="status">Not connected.</div>
+  <div id="audio"></div>
+
+<script type="module">
+  import { Room, RoomEvent, TokenSource } from 'https://cdn.jsdelivr.net/npm/livekit-client@2.24.1/+esm';
+
+  const TOKEN_SERVER_ID = 'tech120prototype-jm1f6v';
+  const $ = (id) => document.getElementById(id);
+  let room = null;
+  let micOn = true;
+
+  $('name').value = 'Laptop ' + Math.floor(1000 + Math.random() * 9000);
+  const status = (t) => { $('status').textContent = t; };
+
+  $('join').onclick = async () => {
+    const name = $('name').value.trim();
+    const code = $('code').value.trim().toUpperCase();
+    if (!name || code.length < 4) { status('Enter a name and a group code (at least 4 characters).'); return; }
+    $('join').disabled = true;
+    try {
+      status('Connecting…');
+      const source = TokenSource.developmentTokenServer(TOKEN_SERVER_ID);
+      const { serverUrl, participantToken } = await source.fetch({
+        roomName: `group-${code}`,
+        participantIdentity: 'web-' + Math.random().toString(36).slice(2, 10),
+        participantName: name,
+      });
+      room = new Room();
+      // Play friends' voices out of this computer's speakers.
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === 'audio') $('audio').appendChild(track.attach());
+        render();
+      });
+      room.on(RoomEvent.TrackUnsubscribed, (track) => { track.detach().forEach((el) => el.remove()); render(); });
+      [RoomEvent.ParticipantConnected, RoomEvent.ParticipantDisconnected,
+       RoomEvent.ActiveSpeakersChanged, RoomEvent.TrackMuted, RoomEvent.TrackUnmuted]
+        .forEach((ev) => room.on(ev, render));
+      room.on(RoomEvent.Disconnected, () => { status('Disconnected.'); showJoin(); });
+
+      await room.connect(serverUrl, participantToken);
+      await room.startAudio();
+      await room.localParticipant.setMicrophoneEnabled(true); // browser will ask for mic permission
+      micOn = true;
+      $('joinForm').style.display = 'none';
+      $('inCall').style.display = 'block';
+      status(`Connected to group ${code}. Speak and your friends will hear you.`);
+      render();
+    } catch (e) {
+      console.error(e);
+      status('Error: ' + (e?.message || e));
+      $('join').disabled = false;
+    }
+  };
+
+  $('mic').onclick = async () => {
+    micOn = !micOn;
+    await room.localParticipant.setMicrophoneEnabled(micOn);
+    $('mic').textContent = micOn ? '🎙️ Mic is on — click to mute' : '🔇 Mic is muted — click to talk';
+    render();
+  };
+
+  $('leave').onclick = async () => {
+    const r = room; room = null;
+    await r?.disconnect();
+    showJoin();
+    status('Left the group.');
+  };
+
+  function showJoin() {
+    $('joinForm').style.display = 'block';
+    $('inCall').style.display = 'none';
+    $('join').disabled = false;
+    $('members').innerHTML = '';
+    $('audio').innerHTML = '';
+  }
+
+  function render() {
+    if (!room) return;
+    const people = [room.localParticipant, ...room.remoteParticipants.values()];
+    $('members').innerHTML = '';
+    for (const p of people) {
+      const isMe = p === room.localParticipant;
+      const name = (p.name || p.identity) + (isMe ? ' (you)' : '');
+      const row = document.createElement('div');
+      row.className = 'member' + (p.isSpeaking ? ' talking' : '');
+      const dot = document.createElement('div');
+      dot.className = 'dot';
+      dot.textContent = name[0].toUpperCase();
+      const info = document.createElement('div');
+      const title = document.createElement('div');
+      title.textContent = name;
+      const sub = document.createElement('div');
+      sub.className = 'sub';
+      const muted = isMe ? !micOn : !p.isMicrophoneEnabled;
+      sub.textContent = p.isSpeaking ? '🔊 Talking…' : muted ? 'Mic off' : 'Listening';
+      info.append(title, sub);
+      row.append(dot, info);
+      $('members').appendChild(row);
+    }
+    if (room.remoteParticipants.size === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'hint';
+      empty.textContent = 'No one else is here yet.';
+      $('members').appendChild(empty);
+    }
+  }
+</script>
+</body>
+</html>
