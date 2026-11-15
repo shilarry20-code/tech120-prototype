@@ -2,13 +2,17 @@
 
 import { useState } from 'react';
 import Slider from '@react-native-community/slider';
-import { Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Switch, Text, TextInput, View } from 'react-native';
 import { useRaveCall, type GroupMember } from '@/state/RaveCallContext';
 import { Button, Card, Screen, colors, styles } from '@/components/ui';
 
 export default function FriendsScreen() {
   const {
+    myName,
+    setMyName,
     groupCode,
+    groupStatus,
+    groupError,
     members,
     createGroup,
     joinGroup,
@@ -28,9 +32,20 @@ export default function FriendsScreen() {
           Make a group so you and your friends can talk to each other during the concert.
         </Text>
         <Card>
+          <Text style={styles.h2}>Your name</Text>
+          <TextInput
+            value={myName}
+            onChangeText={setMyName}
+            placeholder="What friends will see"
+            placeholderTextColor={colors.muted}
+            maxLength={20}
+            style={[styles.input, { letterSpacing: 0 }]}
+          />
+        </Card>
+        <Card>
           <Text style={styles.h2}>Start a group</Text>
           <Text style={styles.hint}>You'll get a code to share with your friends.</Text>
-          <Button label="Create group" onPress={createGroup} />
+          <Button label="Create group" onPress={createGroup} disabled={!myName.trim()} />
         </Card>
         <Card>
           <Text style={styles.h2}>Join a friend's group</Text>
@@ -50,7 +65,7 @@ export default function FriendsScreen() {
           {error && <Text style={{ color: colors.live }}>{error}</Text>}
           <Button
             label="Join group"
-            disabled={code.trim().length === 0}
+            disabled={code.trim().length === 0 || !myName.trim()}
             onPress={() => {
               if (!joinGroup(code)) setError('Group codes are at least 4 characters.');
             }}
@@ -60,6 +75,9 @@ export default function FriendsScreen() {
     );
   }
 
+  const others = members.filter((m) => !m.isMe);
+  const me = members.find((m) => m.isMe);
+
   return (
     <Screen title="Friends">
       <Card style={{ alignItems: 'center' }}>
@@ -68,12 +86,29 @@ export default function FriendsScreen() {
           {groupCode}
         </Text>
         <Text style={styles.hint}>Share this code so friends can join.</Text>
+        {groupStatus === 'connecting' && <ActivityIndicator color={colors.accent} />}
       </Card>
 
+      {groupError && (
+        <Card style={{ borderColor: colors.live }}>
+          <Text style={{ color: colors.live }}>{groupError}</Text>
+          {groupStatus === 'error' && (
+            <Button label="Try again" onPress={() => joinGroup(groupCode)} />
+          )}
+        </Card>
+      )}
+
       <Button
-        label={micOn ? '🎙️  Mic on — tap to mute' : '🔇  Mic off — tap to talk'}
+        label={
+          micOn
+            ? me?.talking
+              ? '🎙️  Talking… (tap to mute)'
+              : '🎙️  Mic on — tap to mute'
+            : '🔇  Mic off — tap to talk'
+        }
         variant={micOn ? 'primary' : 'secondary'}
         onPress={toggleMic}
+        disabled={groupStatus !== 'connected'}
       />
 
       <Card>
@@ -97,8 +132,15 @@ export default function FriendsScreen() {
       </Card>
 
       <Text style={[styles.h2, { marginTop: 4 }]}>In your group</Text>
-      {members.map((m) => (
-        <MemberRow key={m.id} member={m} />
+      {groupStatus === 'connected' && others.length === 0 && (
+        <Card>
+          <Text style={styles.hint}>
+            No one else is here yet. Share the code {groupCode} with a friend.
+          </Text>
+        </Card>
+      )}
+      {others.map((m) => (
+        <MemberRow key={m.identity} member={m} />
       ))}
 
       <Button label="Leave group" variant="danger" onPress={leaveGroup} />
@@ -107,41 +149,38 @@ export default function FriendsScreen() {
 }
 
 function MemberRow({ member }: { member: GroupMember }) {
-  const { toggleDuckFor, simulateTalk } = useRaveCall();
+  const { toggleDuckFor } = useRaveCall();
   return (
     <Card style={member.talking ? { borderColor: member.color } : undefined}>
-      <View style={[styles.row, { justifyContent: 'space-between' }]}>
-        <View style={styles.row}>
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: member.color,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderWidth: member.talking ? 3 : 0,
-              borderColor: colors.text,
-            }}
-          >
-            <Text style={{ fontWeight: '900', color: colors.bg }}>{member.name[0]}</Text>
-          </View>
-          <View>
-            <Text style={styles.h2}>{member.name}</Text>
-            <Text style={[styles.hint, member.talking && { color: member.color }]}>
-              {member.talking ? '🔊 Talking…' : 'Listening'}
-            </Text>
-          </View>
+      <View style={styles.row}>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: member.color,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: member.talking ? 3 : 0,
+            borderColor: colors.text,
+          }}
+        >
+          <Text style={{ fontWeight: '900', color: colors.bg }}>
+            {member.name[0]?.toUpperCase()}
+          </Text>
         </View>
-        <Pressable onPress={() => simulateTalk(member.id)} hitSlop={8}>
-          <Text style={[styles.hint, { textDecorationLine: 'underline' }]}>Test talk</Text>
-        </Pressable>
+        <View>
+          <Text style={styles.h2}>{member.name}</Text>
+          <Text style={[styles.hint, member.talking && { color: member.color }]}>
+            {member.talking ? '🔊 Talking…' : 'Listening'}
+          </Text>
+        </View>
       </View>
       <View style={[styles.row, { justifyContent: 'space-between' }]}>
         <Text style={styles.body}>Lower concert when they talk</Text>
         <Switch
           value={member.duckWhenTalking}
-          onValueChange={() => toggleDuckFor(member.id)}
+          onValueChange={() => toggleDuckFor(member.identity)}
           trackColor={{ false: colors.cardBorder, true: colors.accent }}
           thumbColor={colors.text}
         />

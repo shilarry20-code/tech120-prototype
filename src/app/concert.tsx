@@ -2,13 +2,17 @@
 
 import Slider from '@react-native-community/slider';
 import { router } from 'expo-router';
-import { Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { useRaveCall } from '@/state/RaveCallContext';
 import { Button, Card, LevelBar, LiveBadge, Screen, colors, styles } from '@/components/ui';
 
 export default function ConcertScreen() {
   const {
     concert,
+    concertStatus,
+    concertError,
+    venueLive,
+    joinConcert,
     volume,
     setVolume,
     muted,
@@ -30,18 +34,38 @@ export default function ConcertScreen() {
     );
   }
 
-  const ducked = duckingBy.length > 0 && !muted;
+  const ducked = duckingBy.length > 0 && !muted && venueLive;
   const names = duckingBy.map((m) => m.name).join(' & ');
+
+  let statusLine: string;
+  if (concertStatus === 'connecting') statusLine = 'Connecting…';
+  else if (concertStatus === 'error') statusLine = 'Not connected';
+  else if (!venueLive) statusLine = 'Waiting for the venue to start streaming…';
+  else if (muted) statusLine = 'Muted';
+  else if (ducked)
+    statusLine = `Lowered — ${names} ${duckingBy.length > 1 ? 'are' : 'is'} talking`;
+  else statusLine = 'Full mix';
 
   return (
     <Screen title="Concert">
       <Card>
         <View style={[styles.row, { justifyContent: 'space-between' }]}>
           <Text style={[styles.h2, { fontSize: 22 }]}>{concert.artist}</Text>
-          <LiveBadge />
+          {concertStatus === 'connected' && venueLive && <LiveBadge />}
+          {concertStatus === 'connecting' && <ActivityIndicator color={colors.accent} />}
         </View>
-        <Text style={styles.hint}>{concert.venue}</Text>
+        <Text style={styles.hint}>
+          {concert.venue} · code {concert.code}
+        </Text>
       </Card>
+
+      {concertStatus === 'error' && (
+        <Card style={{ borderColor: colors.live }}>
+          <Text style={[styles.h2, { color: colors.live }]}>Couldn't connect</Text>
+          <Text style={styles.hint}>{concertError}</Text>
+          <Button label="Try again" onPress={() => joinConcert(concert)} />
+        </Card>
+      )}
 
       <Card style={{ alignItems: 'center', paddingVertical: 24 }}>
         <Text style={styles.hint}>IN YOUR EARBUDS</Text>
@@ -52,11 +76,7 @@ export default function ConcertScreen() {
           <LevelBar level={effectiveVolume} color={ducked ? colors.accent2 : colors.accent} />
         </View>
         <Text style={[styles.hint, { marginTop: 6, color: ducked ? colors.accent2 : colors.muted }]}>
-          {muted
-            ? 'Muted'
-            : ducked
-              ? `Lowered — ${names} ${duckingBy.length > 1 ? 'are' : 'is'} talking`
-              : 'Full mix'}
+          {statusLine}
         </Text>
       </Card>
 

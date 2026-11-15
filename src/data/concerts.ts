@@ -1,4 +1,5 @@
-// Fake concert data for the prototype. Later this would come from a server.
+// Concert list is still hard-coded. Each concert's audio lives in the LiveKit
+// room "concert-<code>". Later this list would come from a server.
 
 export type Concert = {
   id: string;
@@ -36,16 +37,3 @@ export function findConcertByCode(code: string): Concert | undefined {
   const clean = code.trim().toUpperCase();
   return CONCERTS.find((c) => c.code === clean);
 }
-
-export type Friend = {
-  id: string;
-  name: string;
-  color: string;
-};
-
-// Fake friends who "join" your group in the prototype.
-export const FAKE_FRIENDS: Friend[] = [
-  { id: 'f1', name: 'Maya', color: '#FF5DA2' },
-  { id: 'f2', name: 'Jordan', color: '#5DD6FF' },
-  { id: 'f3', name: 'Sam', color: '#FFC85D' },
-];
